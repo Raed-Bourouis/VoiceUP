@@ -75,7 +75,7 @@ class AuthService {
     try {
       await _supabase.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: 'io.supabase.flutter://login-callback/',
+        redirectTo: 'voiceup://login-callback',
       );
       return true;
     } on AuthException catch (e) {
