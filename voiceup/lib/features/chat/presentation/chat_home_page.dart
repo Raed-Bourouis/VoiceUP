@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:voiceup/services/auth_service.dart';
 import 'package:voiceup/services/profile_service.dart';
+import 'package:voiceup/features/friends/presentation/friends_page.dart';
 
 /// Main chat/home screen shown after successful authentication.
 /// 
@@ -72,6 +73,14 @@ class _ChatHomePageState extends State<ChatHomePage> {
     }
   }
 
+  /// Navigate to Friends page
+  void _navigateToFriends() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const FriendsPage()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _authService.currentUser;
@@ -82,6 +91,11 @@ class _ChatHomePageState extends State<ChatHomePage> {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.people),
+            onPressed: _navigateToFriends,
+            tooltip: 'Friends',
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _handleSignOut,
@@ -161,7 +175,7 @@ class _ChatHomePageState extends State<ChatHomePage> {
                       const SizedBox(height: 24),
                     ],
 
-                    // TODO: Add chat functionality here
+                    // Quick action buttons
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -181,6 +195,20 @@ class _ChatHomePageState extends State<ChatHomePage> {
                             style: TextStyle(
                               color: Colors.grey[600],
                               fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: _navigateToFriends,
+                            icon: const Icon(Icons.people),
+                            label: const Text('Manage Friends'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.deepPurple,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
                             ),
                           ),
                         ],
