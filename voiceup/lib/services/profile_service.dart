@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:voiceup/models/profile.dart';
 
 /// Service class for handling user profile operations with Supabase.
 /// 
@@ -39,18 +40,18 @@ class ProfileService {
   /// 
   /// [userId] - The unique identifier of the user
   /// 
-  /// Returns a Map containing profile data if found, null otherwise.
+  /// Returns a Profile model if found.
   /// 
   /// Throws [PostgrestException] if the database query fails.
-  Future<Map<String, dynamic>?> getProfileById(String userId) async {
+  Future<Profile> getProfileById(String userId) async {
     try {
       final response = await _supabase
           .from('profiles')
           .select()
           .eq('id', userId)
-          .maybeSingle();
+          .single();
 
-      return response;
+      return Profile.fromJson(response);
     } on PostgrestException catch (e) {
       throw Exception('Failed to fetch profile: ${e.message}');
     } catch (e) {

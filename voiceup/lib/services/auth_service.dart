@@ -93,6 +93,7 @@ class AuthService {
   /// Throws [AuthException] if native Google sign-in fails.
   /// 
   /// Returns [AuthResponse] containing session and user data.
+ /*
   Future<AuthResponse> signInWithGoogleNative() async {
     try {
       // Initialize Google Sign-In
@@ -146,7 +147,7 @@ class AuthService {
       throw AuthException('An unexpected error occurred during native Google sign-in: $e');
     }
   }
-
+*/
   /// Signs out the current user.
   /// 
   /// Clears the current session and removes stored credentials.

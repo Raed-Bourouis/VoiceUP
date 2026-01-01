@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:voiceup/features/auth/presentation/auth_page.dart';
-import 'package:voiceup/features/chat/presentation/chat_home_page.dart';
+import 'package:voiceup/features/chat/presentation/chat_list_page.dart';
 
 /// AuthGate widget that manages navigation based on authentication state.
 /// 
@@ -21,7 +21,7 @@ class AuthGate extends StatelessWidget {
 
         if (session != null) {
           // User is signed in, show the main app
-          return const ChatHomePage();
+          return const ChatListPage();
         } else {
           // No session, show authentication page
           return const AuthPage();

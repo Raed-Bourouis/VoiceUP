@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:voiceup/services/friendship_service.dart';
+import 'package:voiceup/services/chat_service.dart';
 import 'package:voiceup/models/profile.dart';
 import 'package:voiceup/models/friend_item.dart';
 import 'package:voiceup/models/friend_request_item.dart';
@@ -8,6 +9,7 @@ import 'package:voiceup/models/friendship.dart';
 import 'package:voiceup/features/friends/widgets/friend_list_item.dart';
 import 'package:voiceup/features/friends/widgets/friend_request_list_item.dart';
 import 'package:voiceup/features/friends/widgets/user_search_result_item.dart';
+import 'package:voiceup/features/chat/presentation/chat_detail_page.dart';
 
 /// Main Friends page with tabs for Friends, Requests, and Find.
 /// 
@@ -26,6 +28,7 @@ class _FriendsPageState extends State<FriendsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final _friendshipService = FriendshipService();
+  final _chatService = ChatService();
 
   // Friends tab state
   List<FriendItem> _friends = [];
@@ -145,14 +148,45 @@ class _FriendsPageState extends State<FriendsPage>
     }
   }
 
-  void _handleMessage(FriendItem friend) {
-    // TODO: Implement get_or_create_dm_chat RPC and navigate to chat screen
-    // For now, show a placeholder message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Chat with ${friend.profile.displayNameOrUsername} - Coming soon!'),
-      ),
-    );
+  Future<void> _handleMessage(FriendItem friend) async {
+    try {
+      // Show loading indicator
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Opening chat...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+
+      // Create or get direct chat
+      final chat = await _chatService.createDirectChat(friend.profile.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+        
+        // Navigate to chat detail
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ChatDetailPage(
+              chat: chat,
+              otherUser: friend.profile,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to open chat: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   // Requests tab methods
