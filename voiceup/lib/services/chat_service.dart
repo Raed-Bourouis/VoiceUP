@@ -16,7 +16,7 @@ class ChatService {
   /// Gets the current authenticated user's ID.
   String? get _currentUserId => _supabase.auth.currentUser?.id;
 
-  /// Creates or retrieves a direct (1:1) chat with a friend.
+  /// Creates or retrieves a direct (1:1) chat with a friend. 
   /// 
   /// [friendId] - The friend's user ID
   /// 
@@ -52,7 +52,7 @@ class ChatService {
           
           final participantIds = participants.map((p) => p['user_id'] as String).toList();
           
-          if (participantIds.length == 2 && 
+          if (participantIds. length == 2 && 
               participantIds.contains(currentUserId) && 
               participantIds.contains(friendId)) {
             return Chat.fromJson(chatData);
@@ -75,7 +75,7 @@ class ChatService {
       // Add both users as participants
       await _supabase.from('chat_participants').insert([
         {
-          'chat_id': chat.id,
+          'chat_id': chat. id,
           'user_id': currentUserId,
         },
         {
@@ -88,7 +88,7 @@ class ChatService {
     } on PostgrestException catch (e) {
       throw PostgrestException(message: e.message);
     } catch (e) {
-      throw Exception('Failed to create direct chat: $e');
+      throw Exception('Failed to create direct chat:  $e');
     }
   }
 
@@ -122,7 +122,7 @@ class ChatService {
 
       // Add all participants including the creator
       final participants = participantIds.toSet()..add(currentUserId);
-      await _supabase.from('chat_participants').insert(
+      await _supabase. from('chat_participants').insert(
         participants.map((userId) => {
           'chat_id': chat.id,
           'user_id': userId,
@@ -133,13 +133,13 @@ class ChatService {
     } on PostgrestException catch (e) {
       throw PostgrestException(message: e.message);
     } catch (e) {
-      throw Exception('Failed to create group chat: $e');
+      throw Exception('Failed to create group chat:  $e');
     }
   }
 
   /// Gets all chats for the current user.
   /// 
-  /// Returns a list of Chat objects sorted by most recent message.
+  /// Returns a list of Chat objects sorted by most recent update.
   /// 
   /// Throws [PostgrestException] if the database query fails.
   Future<List<Chat>> getChats() async {
@@ -149,17 +149,31 @@ class ChatService {
         throw Exception('No authenticated user');
       }
 
-      // Get all chats where the user is a participant
-      final response = await _supabase
+      // Get all chat IDs where the user is a participant
+      final participantResponse = await _supabase
           .from('chat_participants')
-          .select('chats!inner(id, name, avatar_url, is_group, created_by, created_at, updated_at)')
-          .eq('user_id', currentUserId)
-          .order('chats.updated_at', ascending: false);
+          .select('chat_id')
+          .eq('user_id', currentUserId);
+
+      if (participantResponse.isEmpty) {
+        return [];
+      }
+
+      // Extract chat IDs
+      final chatIds = (participantResponse as List)
+          .map((row) => row['chat_id'] as String)
+          .toList();
+
+      // Get the actual chats with proper ordering
+      final chatsResponse = await _supabase
+          .from('chats')
+          .select('id, name, avatar_url, is_group, created_by, created_at, updated_at')
+          .inFilter('id', chatIds)
+          .order('updated_at', ascending: false);
 
       final chats = <Chat>[];
-      for (final row in response) {
-        final chatData = row['chats'] as Map<String, dynamic>;
-        chats.add(Chat.fromJson(chatData));
+      for (final chatData in chatsResponse) {
+        chats.add(Chat.fromJson(chatData as Map<String, dynamic>));
       }
 
       return chats;
@@ -170,7 +184,7 @@ class ChatService {
     }
   }
 
-  /// Gets a single chat by ID.
+  /// Gets a single chat by ID. 
   /// 
   /// [chatId] - The chat ID
   /// 
@@ -193,7 +207,7 @@ class ChatService {
     }
   }
 
-  /// Gets all participants of a chat.
+  /// Gets all participants of a chat. 
   /// 
   /// [chatId] - The chat ID
   /// 
@@ -221,7 +235,7 @@ class ChatService {
   /// 
   /// [chatId] - The chat ID
   /// 
-  /// Throws [PostgrestException] if the database query fails.
+  /// Throws [PostgrestException] if the database query fails. 
   Future<void> leaveChat(String chatId) async {
     try {
       final currentUserId = _currentUserId;
@@ -230,7 +244,7 @@ class ChatService {
       }
 
       await _supabase
-          .from('chat_participants')
+          . from('chat_participants')
           .delete()
           .eq('chat_id', chatId)
           .eq('user_id', currentUserId);
@@ -256,13 +270,13 @@ class ChatService {
         }).toList(),
       );
     } on PostgrestException catch (e) {
-      throw PostgrestException(message: e.message);
+      throw PostgrestException(message: e. message);
     } catch (e) {
       throw Exception('Failed to add participants: $e');
     }
   }
 
-  /// Subscribes to real-time updates for the current user's chats.
+  /// Subscribes to real-time updates for the current user's chats. 
   /// 
   /// [callback] - Function to call when chats are updated
   /// 
