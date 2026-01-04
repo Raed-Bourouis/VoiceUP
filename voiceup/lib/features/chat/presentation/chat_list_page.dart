@@ -5,6 +5,7 @@ import 'package:voiceup/services/auth_service.dart';
 import 'package:voiceup/services/chat_service.dart';
 import 'package:voiceup/services/message_service.dart';
 import 'package:voiceup/services/profile_service.dart';
+import 'package:voiceup/services/notification_service.dart';
 import 'package:voiceup/models/chat.dart';
 import 'package:voiceup/models/profile.dart';
 import 'package:voiceup/models/message.dart';
@@ -34,6 +35,7 @@ class _ChatListPageState extends State<ChatListPage> {
   final _chatService = ChatService();
   final _messageService = MessageService();
   final _profileService = ProfileService();
+  final _notificationService = NotificationService();
 
   List<Chat> _chats = [];
   Map<String, Profile> _otherUserProfiles = {}; // For 1:1 chats
@@ -43,17 +45,20 @@ class _ChatListPageState extends State<ChatListPage> {
   bool _isLoading = true;
   String? _error;
   RealtimeChannel? _chatsChannel;
+  StreamSubscription? _notificationSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadChats();
     _subscribeToChats();
+    _subscribeToNotificationTaps();
   }
 
   @override
   void dispose() {
     _chatsChannel?.unsubscribe();
+    _notificationSubscription?.cancel();
     super.dispose();
   }
 
@@ -137,6 +142,27 @@ class _ChatListPageState extends State<ChatListPage> {
     } catch (e) {
       // Silently handle subscription errors
     }
+  }
+
+  void _subscribeToNotificationTaps() {
+    _notificationSubscription = _notificationService.onNotificationTap.listen((data) {
+      final chatId = data['chat_id'] as String?;
+      if (chatId != null && mounted) {
+        // Find the chat and navigate to it
+        try {
+          final chatIndex = _chats.indexWhere((c) => c.id == chatId);
+          if (chatIndex >= 0) {
+            _navigateToChat(_chats[chatIndex]);
+          } else {
+            // Chat not found in current list, reload chats
+            debugPrint('Chat $chatId not found in list, reloading...');
+            _loadChats();
+          }
+        } catch (e) {
+          debugPrint('Error navigating to chat: $e');
+        }
+      }
+    });
   }
 
   Future<void> _handleSignOut() async {

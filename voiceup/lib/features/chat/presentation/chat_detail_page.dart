@@ -6,6 +6,7 @@ import 'package:voiceup/services/auth_service.dart';
 import 'package:voiceup/services/message_service.dart';
 import 'package:voiceup/services/chat_service.dart';
 import 'package:voiceup/services/storage_service.dart';
+import 'package:voiceup/services/notification_service.dart';
 import 'package:voiceup/models/chat.dart';
 import 'package:voiceup/models/profile.dart';
 import 'package:voiceup/models/message.dart';
@@ -40,6 +41,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   final _messageService = MessageService();
   final _chatService = ChatService();
   final _storageService = StorageService();
+  final _notificationService = NotificationService();
   final ScrollController _scrollController = ScrollController();
 
   List<Message> _messages = [];
@@ -54,6 +56,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   @override
   void initState() {
     super.initState();
+    // Set current chat to suppress notifications
+    _notificationService.setCurrentChat(widget.chat.id);
     _loadMessages();
     _subscribeToMessages();
     _markAsRead();
@@ -62,6 +66,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   @override
   void dispose() {
+    // Clear current chat when leaving
+    _notificationService.clearCurrentChat();
     _messagesChannel?.unsubscribe();
     _scrollController.dispose();
     super.dispose();

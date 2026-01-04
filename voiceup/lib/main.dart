@@ -2,17 +2,32 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:voiceup/features/auth/widgets/auth_gate.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:voiceup/services/notification_service.dart';
+
+/// Background message handler - must be top-level function
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint('Background message: ${message.messageId}');
+}
 
 /// Main entry point for the VoiceUp Flutter application.
 /// 
-/// Initializes Supabase client and runs the app with authentication gate.
+/// Initializes Firebase, Supabase client and runs the app with authentication gate.
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await dotenv.load(fileName: ".env");
   final supabaseUrl = dotenv.env['SUPABASE_URL']!;
-
   final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY']!;
+
+  // Initialize Firebase
+  await Firebase.initializeApp();
+
+  // Set background message handler
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   // Initialize Supabase
   await Supabase.initialize(
@@ -27,6 +42,9 @@ Future<void> main() async {
       eventsPerSecond: 10,
     ),
   );
+
+  // Initialize NotificationService
+  await NotificationService().initialize();
 
   runApp(const MyApp());
 }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "907073495750",
+    "project_id": "voiceup-notifs",
+    "storage_bucket": "voiceup-notifs.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:907073495750:android:6583f52c65bb5849672dc7",
+        "android_client_info": {
+          "package_name": "com.example.voiceup"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDRoAm3q3jKUfNjMTIz10AHDPZjthCVyNM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
