@@ -1,27 +1,19 @@
+import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:voiceup/models/profile.dart';
+import '../models/profile.dart';
 
 /// Service class for handling user profile operations with Supabase.
-/// 
-/// This service provides methods for fetching and managing user profiles
-/// from the 'profiles' table in Supabase.
 class ProfileService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Fetches the profile for the currently authenticated user.
-  /// 
-  /// Returns a Map containing profile data if found, null otherwise.
-  /// The profile is expected to be automatically created by a database trigger
-  /// when a new user is created in auth.users.
-  /// 
-  /// Throws [PostgrestException] if the database query fails.
+  /// ===============================
+  /// FETCH CURRENT PROFILE (RAW)
+  /// ===============================
   Future<Map<String, dynamic>?> getCurrentProfile() async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        return null;
-      }
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return null;
 
+    try {
       final response = await _supabase
           .from('profiles')
           .select()
@@ -32,17 +24,21 @@ class ProfileService {
     } on PostgrestException catch (e) {
       throw Exception('Failed to fetch profile: ${e.message}');
     } catch (e) {
-      throw Exception('An unexpected error occurred while fetching profile: $e');
+      throw Exception('Unexpected error while fetching profile: $e');
     }
   }
 
-  /// Fetches a profile by user ID.
-  /// 
-  /// [userId] - The unique identifier of the user
-  /// 
-  /// Returns a Profile model if found.
-  /// 
-  /// Throws [PostgrestException] if the database query fails.
+  /// ===============================
+  /// FETCH CURRENT PROFILE AS MODEL
+  /// ===============================
+  Future<Profile?> getCurrentProfileModel() async {
+    final data = await getCurrentProfile();
+    return data == null ? null : Profile.fromJson(data);
+  }
+
+  /// ===============================
+  /// FETCH PROFILE BY USER ID
+  /// ===============================
   Future<Profile> getProfileById(String userId) async {
     try {
       final response = await _supabase
@@ -55,70 +51,106 @@ class ProfileService {
     } on PostgrestException catch (e) {
       throw Exception('Failed to fetch profile: ${e.message}');
     } catch (e) {
-      throw Exception('An unexpected error occurred while fetching profile: $e');
+      throw Exception('Unexpected error while fetching profile: $e');
     }
   }
 
-  /// Updates the current user's profile.
-  /// 
-  /// [updates] - Map of field names and values to update
-  /// 
-  /// Returns the updated profile data.
-  /// 
-  /// Throws [PostgrestException] if the database update fails.
-  Future<Map<String, dynamic>> updateCurrentProfile(
-    Map<String, dynamic> updates,
-  ) async {
+  /// ===============================
+  /// UPDATE PROFILE GENERIC
+  /// ===============================
+  Future<void> updateCurrentProfile(Map<String, dynamic> updates) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception('No authenticated user');
+
     try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) {
-        throw Exception('No authenticated user');
-      }
-
-      final response = await _supabase
-          .from('profiles')
-          .update(updates)
-          .eq('id', userId)
-          .select()
-          .single();
-
-      return response;
+      await _supabase.from('profiles').update({
+        ...updates,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', userId);
     } on PostgrestException catch (e) {
       throw Exception('Failed to update profile: ${e.message}');
     } catch (e) {
-      throw Exception('An unexpected error occurred while updating profile: $e');
+      throw Exception('Unexpected error while updating profile: $e');
     }
   }
 
-  /// Ensures a profile exists for the current user.
-  /// 
-  /// This method can be called after sign-up to verify the profile was created
-  /// by the database trigger. If no profile exists, it will be created.
-  /// 
-  /// Returns the profile data.
-  Future<Map<String, dynamic>> ensureProfileExists() async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      final userEmail = _supabase.auth.currentUser?.email;
-      
-      if (userId == null) {
-        throw Exception('No authenticated user');
-      }
+  /// ===============================
+  /// UPDATE BIO
+  /// ===============================
+  Future<void> updateBio(String bio) async {
+    await updateCurrentProfile({'bio': bio});
+  }
 
-      // Try to fetch existing profile
+  /// ===============================
+  /// UPDATE DISPLAY NAME
+  /// ===============================
+  Future<void> updateDisplayName(String displayName) async {
+    await updateCurrentProfile({'display_name': displayName});
+  }
+
+  /// ===============================
+  /// UPDATE USERNAME
+  /// ===============================
+  Future<void> updateUsername(String username) async {
+    await updateCurrentProfile({'username': username});
+  }
+
+  /// ===============================
+  /// UPDATE AVATAR
+  /// ===============================
+  Future<void> updateAvatar(String filePath) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) throw Exception("Utilisateur non authentifié");
+
+    final file = File(filePath);
+    final bucket = 'avatars';
+
+    // 🔑 Nom de fichier UNIQUE
+    final fileName = '$userId-${DateTime.now().millisecondsSinceEpoch}.png';
+
+    try {
+      // 1️⃣ Upload vers Supabase Storage
+      await _supabase.storage.from(bucket).upload(
+        fileName,
+        file,
+        fileOptions: const FileOptions(
+          upsert: true,
+          contentType: 'image/png',
+        ),
+      );
+
+      // 2️⃣ Récupère URL publique
+      final publicUrl =
+      _supabase.storage.from(bucket).getPublicUrl(fileName);
+
+      // 3️⃣ Met à jour avatar_url
+      await updateCurrentProfile({'avatar_url': publicUrl});
+    } catch (e) {
+      throw Exception('Failed to upload avatar: $e');
+    }
+  }
+
+
+  Future<Map<String, dynamic>> ensureProfileExists() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) throw Exception('No authenticated user');
+
+    try {
+      // Vérifie si profile existe
       var profile = await getCurrentProfile();
-      
-      // If profile doesn't exist, create it
+
+      // Sinon, crée le profil
       if (profile == null) {
-        profile = await _supabase
-            .from('profiles')
-            .insert({
-              'id': userId,
-              'email': userEmail,
-              'updated_at': DateTime.now().toIso8601String(),
-            })
-            .select()
-            .single();
+        profile = await _supabase.from('profiles').insert({
+          'id': user.id,
+          'email': user.email,
+          'bio': null,
+          'display_name': user.email?.split('@')[0],
+          'username': user.email?.split('@')[0],
+          'avatar_url': null,
+          'created_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String(),
+        }).select().single();
       }
 
       return profile;

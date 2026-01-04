@@ -11,6 +11,8 @@ import 'package:voiceup/models/message.dart';
 import 'package:voiceup/features/chat/widgets/chat_list_item.dart';
 import 'package:voiceup/features/chat/presentation/chat_detail_page.dart';
 import 'package:voiceup/features/friends/presentation/friends_page.dart';
+import 'package:voiceup/features/profile/presentation/profile_page.dart';
+
 
 /// Main chat list page showing all user's conversations.
 /// 
@@ -158,6 +160,16 @@ class _ChatListPageState extends State<ChatListPage> {
       MaterialPageRoute(builder: (context) => const FriendsPage()),
     );
   }
+  void _navigateToProfile() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ProfilePage()), // Assure-toi d'avoir importé ta ProfilePage
+    ).then((_) {
+      // Recharger éventuellement les données après modification du profil
+      _loadChats();
+    });
+  }
+
 
   void _navigateToChat(Chat chat) {
     Navigator.push(
@@ -182,6 +194,11 @@ class _ChatListPageState extends State<ChatListPage> {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person), // Icône profil
+            onPressed: _navigateToProfile,
+            tooltip: 'Profile',
+          ),
           IconButton(
             icon: const Icon(Icons.people),
             onPressed: _navigateToFriends,
