@@ -1,8 +1,9 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:voiceup/services/notification_service.dart';
 
 /// Service class for handling authentication operations with Supabase.
-/// 
+///
 /// This service provides methods for:
 /// - Email/password sign-up and sign-in
 /// - Google OAuth authentication
@@ -11,13 +12,13 @@ class AuthService {
   final SupabaseClient _supabase = Supabase.instance.client;
 
   /// Signs up a new user with email and password.
-  /// 
+  ///
   /// [email] - User's email address
   /// [password] - User's password
   /// [username] - Optional username for the user profile
-  /// 
+  ///
   /// Throws [AuthException] if sign-up fails.
-  /// 
+  ///
   /// Returns [AuthResponse] containing session and user data.
   Future<AuthResponse> signUpWithEmail(
     String email,
@@ -39,17 +40,14 @@ class AuthService {
   }
 
   /// Signs in an existing user with email and password.
-  /// 
+  ///
   /// [email] - User's email address
   /// [password] - User's password
-  /// 
+  ///
   /// Throws [AuthException] if sign-in fails.
-  /// 
+  ///
   /// Returns [AuthResponse] containing session and user data.
-  Future<AuthResponse> signInWithEmail(
-    String email,
-    String password,
-  ) async {
+  Future<AuthResponse> signInWithEmail(String email, String password) async {
     try {
       final response = await _supabase.auth.signInWithPassword(
         email: email,
@@ -64,12 +62,12 @@ class AuthService {
   }
 
   /// Signs in with Google OAuth using the browser flow.
-  /// 
+  ///
   /// This method opens a browser window for Google authentication.
   /// Configure the redirect URL in your Supabase project settings.
-  /// 
+  ///
   /// Throws [AuthException] if OAuth sign-in fails.
-  /// 
+  ///
   /// Returns true if the OAuth flow was initiated successfully.
   Future<bool> signInWithGoogleOAuth() async {
     try {
@@ -86,14 +84,14 @@ class AuthService {
   }
 
   /// Signs in with Google using native Google Sign-In flow.
-  /// 
+  ///
   /// This method uses the google_sign_in package to authenticate
   /// and then exchanges the ID token with Supabase.
-  /// 
+  ///
   /// Throws [AuthException] if native Google sign-in fails.
-  /// 
+  ///
   /// Returns [AuthResponse] containing session and user data.
- /*
+  /*
   Future<AuthResponse> signInWithGoogleNative() async {
     try {
       // Initialize Google Sign-In
@@ -149,12 +147,13 @@ class AuthService {
   }
 */
   /// Signs out the current user.
-  /// 
+  ///
   /// Clears the current session and removes stored credentials.
-  /// 
+  ///
   /// Throws [AuthException] if sign-out fails.
   Future<void> signOut() async {
     try {
+      await NotificationService().deleteToken();
       await _supabase.auth.signOut();
     } on AuthException catch (e) {
       throw AuthException(e.message);
@@ -164,17 +163,17 @@ class AuthService {
   }
 
   /// Gets the current user session.
-  /// 
+  ///
   /// Returns [Session] if user is authenticated, null otherwise.
   Session? get currentSession => _supabase.auth.currentSession;
 
   /// Gets the current authenticated user.
-  /// 
+  ///
   /// Returns [User] if user is authenticated, null otherwise.
   User? get currentUser => _supabase.auth.currentUser;
 
   /// Stream of authentication state changes.
-  /// 
+  ///
   /// Emits events when user signs in, signs out, or session is updated.
   Stream<AuthState> get authStateChanges => _supabase.auth.onAuthStateChange;
 }
