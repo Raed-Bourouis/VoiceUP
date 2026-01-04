@@ -6,16 +6,16 @@ import 'package:voiceup/services/auth_service.dart';
 import 'package:voiceup/services/message_service.dart';
 import 'package:voiceup/services/chat_service.dart';
 import 'package:voiceup/services/storage_service.dart';
+import 'package:voiceup/services/notification_service.dart';
 import 'package:voiceup/models/chat.dart';
 import 'package:voiceup/models/profile.dart';
 import 'package:voiceup/models/message.dart';
 import 'package:voiceup/features/chat/widgets/message_bubble.dart';
 import 'package:voiceup/features/chat/widgets/text_input_bar.dart';
 import 'package:intl/intl.dart';
-import 'package:voiceup/services/notification_service.dart';
 
-/// Individual chat conversation page.
-///
+/// Individual chat conversation page. 
+/// 
 /// Features:
 /// - Scrollable message list with pagination
 /// - Real-time incoming messages
@@ -24,9 +24,13 @@ import 'package:voiceup/services/notification_service.dart';
 /// - Mark messages as read
 class ChatDetailPage extends StatefulWidget {
   final Chat chat;
-  final Profile? otherUser; // For 1:1 chats
+  final Profile?  otherUser; // For 1:1 chats
 
-  const ChatDetailPage({super.key, required this.chat, this.otherUser});
+  const ChatDetailPage({
+    super.key,
+    required this.chat,
+    this.otherUser,
+  });
 
   @override
   State<ChatDetailPage> createState() => _ChatDetailPageState();
@@ -37,6 +41,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   final _messageService = MessageService();
   final _chatService = ChatService();
   final _storageService = StorageService();
+  final _notificationService = NotificationService();
   final ScrollController _scrollController = ScrollController();
 
   List<Message> _messages = [];
@@ -51,7 +56,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   @override
   void initState() {
     super.initState();
-    NotificationService().setCurrentChat(widget.chat.id);
+    // Set current chat to suppress notifications
+    _notificationService.setCurrentChat(widget.chat.id);
     _loadMessages();
     _subscribeToMessages();
     _markAsRead();
@@ -60,7 +66,8 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   @override
   void dispose() {
-    NotificationService().setCurrentChat(null);
+    // Clear current chat when leaving
+    _notificationService.clearCurrentChat();
     _messagesChannel?.unsubscribe();
     _scrollController.dispose();
     super.dispose();
@@ -68,7 +75,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   void _onScroll() {
     // Load more messages when scrolling to the top
-    if (_scrollController.position.pixels >=
+    if (_scrollController.position.pixels >= 
         _scrollController.position.maxScrollExtent - 200) {
       if (!_isLoadingMore && _hasMore) {
         _loadMoreMessages();
@@ -76,26 +83,25 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     }
   }
 
-  /// Extracts the file path from a Supabase storage URL.
-  String? _extractFilePath(String url) {
+  /// Extracts the file path from a Supabase storage URL. 
+  String?  _extractFilePath(String url) {
     try {
-      final uri = Uri.parse(url);
+      final uri = Uri. parse(url);
       final pathSegments = uri.pathSegments;
-
+      
       int bucketIndex = -1;
       for (int i = 0; i < pathSegments.length; i++) {
-        if (pathSegments[i] == 'photos' ||
-            pathSegments[i] == 'voice-messages') {
+        if (pathSegments[i] == 'photos' || pathSegments[i] == 'voice-messages') {
           bucketIndex = i;
           break;
         }
       }
-
+      
       if (bucketIndex == -1 || bucketIndex >= pathSegments.length - 1) {
         return null;
       }
-
-      return pathSegments.sublist(bucketIndex + 1).join('/');
+      
+      return pathSegments. sublist(bucketIndex + 1).join('/');
     } catch (e) {
       return null;
     }
@@ -104,29 +110,29 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   /// Gets signed URL for a media message.
   Future<String> _getSignedUrl(Message message) async {
     if (message.mediaUrl == null) return '';
-
+    
     if (_signedUrlCache.containsKey(message.mediaUrl)) {
       return _signedUrlCache[message.mediaUrl]!;
     }
-
+    
     try {
       final filePath = _extractFilePath(message.mediaUrl!);
       if (filePath == null) {
         return message.mediaUrl!;
       }
-
-      final bucket = message.messageType == MessageType.photo
-          ? 'photos'
+      
+      final bucket = message.messageType == MessageType.photo 
+          ? 'photos' 
           : 'voice-messages';
-
+      
       final signedUrl = await _storageService.getSignedUrl(
         bucket,
         filePath,
         expiresIn: 3600,
       );
-
-      _signedUrlCache[message.mediaUrl!] = signedUrl;
-
+      
+      _signedUrlCache[message.mediaUrl! ] = signedUrl;
+      
       return signedUrl;
     } catch (e) {
       return message.mediaUrl!;
@@ -134,22 +140,20 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   }
 
   /// Processes messages to get signed URLs for media.
-  Future<List<Message>> _processMessagesWithSignedUrls(
-    List<Message> messages,
-  ) async {
+  Future<List<Message>> _processMessagesWithSignedUrls(List<Message> messages) async {
     final processedMessages = <Message>[];
-
+    
     for (final message in messages) {
-      if (message.mediaUrl != null &&
-          (message.messageType == MessageType.photo ||
-              message.messageType == MessageType.voice)) {
+      if (message.mediaUrl != null && 
+          (message.messageType == MessageType. photo || 
+           message.messageType == MessageType.voice)) {
         final signedUrl = await _getSignedUrl(message);
         processedMessages.add(message.copyWith(mediaUrl: signedUrl));
       } else {
-        processedMessages.add(message);
+        processedMessages. add(message);
       }
     }
-
+    
     return processedMessages;
   }
 
@@ -171,7 +175,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
         setState(() {
           // Messages come from API newest first, reverse to have oldest first
           // So _messages[0] is oldest, _messages[length-1] is newest
-          _messages = processedMessages.reversed.toList();
+          _messages = processedMessages.reversed. toList();
           _isLoading = false;
           _hasMore = messages.length >= 50;
         });
@@ -209,7 +213,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
       if (mounted) {
         setState(() {
-          _messages.insertAll(0, processedMessages.reversed.toList());
+          _messages.insertAll(0, processedMessages. reversed. toList());
           _isLoadingMore = false;
           _hasMore = messages.length >= 50;
         });
@@ -225,29 +229,30 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   void _subscribeToMessages() {
     try {
-      _messagesChannel = _messageService.subscribeToMessages(widget.chat.id, (
-        message,
-      ) async {
-        if (mounted) {
-          Message processedMessage = message;
-          if (message.mediaUrl != null &&
-              (message.messageType == MessageType.photo ||
-                  message.messageType == MessageType.voice)) {
-            final signedUrl = await _getSignedUrl(message);
-            processedMessage = message.copyWith(mediaUrl: signedUrl);
+      _messagesChannel = _messageService.subscribeToMessages(
+        widget. chat.id,
+        (message) async {
+          if (mounted) {
+            Message processedMessage = message;
+            if (message.mediaUrl != null && 
+                (message.messageType == MessageType.photo || 
+                 message.messageType == MessageType.voice)) {
+              final signedUrl = await _getSignedUrl(message);
+              processedMessage = message.copyWith(mediaUrl: signedUrl);
+            }
+            
+            setState(() {
+              _messages.add(processedMessage);
+            });
+            
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _scrollToBottom();
+            });
+            
+            _markAsRead();
           }
-
-          setState(() {
-            _messages.add(processedMessage);
-          });
-
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _scrollToBottom();
-          });
-
-          _markAsRead();
-        }
-      });
+        },
+      );
     } catch (e) {
       // Silently handle subscription errors
     }
@@ -265,7 +270,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         _scrollController.position.minScrollExtent,
-        duration: const Duration(milliseconds: 300),
+        duration:  const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     }
@@ -273,13 +278,13 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   Future<void> _handleSendText(String text) async {
     try {
-      await _messageService.sendTextMessage(widget.chat.id, text);
+      await _messageService. sendTextMessage(widget.chat.id, text);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to send message: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: Colors. red,
           ),
         );
       }
@@ -304,7 +309,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger. of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to send photo: $e'),
             backgroundColor: Colors.red,
@@ -317,7 +322,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   Future<void> _handleSendVoice(File audio, int durationSeconds) async {
     try {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger. of(context).showSnackBar(
           const SnackBar(
             content: Text('Uploading voice message...'),
             duration: Duration(seconds: 2),
@@ -348,7 +353,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
   String _getChatTitle() {
     if (widget.chat.isGroup) {
-      return widget.chat.name ?? 'Group Chat';
+      return widget.chat.name ??  'Group Chat';
     } else {
       return widget.otherUser?.displayNameOrUsername ?? 'Chat';
     }
@@ -357,14 +362,16 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
+      appBar:  AppBar(
         title: Text(_getChatTitle()),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
       ),
       body: Column(
         children: [
-          Expanded(child: _buildMessagesList()),
+          Expanded(
+            child: _buildMessagesList(),
+          ),
           TextInputBar(
             onSendText: _handleSendText,
             onSendPhoto: _handleSendPhoto,
@@ -386,7 +393,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
+            const SizedBox(height:  16),
             Text('Error: $_error'),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -398,28 +405,38 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       );
     }
 
-    if (_messages.isEmpty) {
+    if (_messages. isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey[400]),
+            Icon(
+              Icons.chat_bubble_outline,
+              size: 64,
+              color: Colors.grey[400],
+            ),
             const SizedBox(height: 16),
             Text(
               'No messages yet',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600]),
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey[600],
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'Send a message to start the conversation! ',
-              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+              ),
             ),
           ],
         ),
       );
     }
 
-    return ListView.builder(
+    return ListView. builder(
       controller: _scrollController,
       reverse: true, // Show newest at bottom
       padding: const EdgeInsets.all(8),
@@ -427,7 +444,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
       itemBuilder: (context, index) {
         if (index == _messages.length) {
           return const Center(
-            child: Padding(
+            child:  Padding(
               padding: EdgeInsets.all(16.0),
               child: CircularProgressIndicator(),
             ),
@@ -447,8 +464,11 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
 
         return Column(
           children: [
-            if (showDateSeparator) _buildDateSeparator(message.createdAt),
-            MessageBubble(message: message, isSent: isSent),
+            if (showDateSeparator) _buildDateSeparator(message. createdAt),
+            MessageBubble(
+              message:  message,
+              isSent:  isSent,
+            ),
           ],
         );
       },
@@ -456,7 +476,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
   }
 
   /// Determines if a date separator should be shown before the message at [messageIndex].
-  ///
+  /// 
   /// Shows separator if:
   /// - It's the first message (oldest), OR
   /// - The message date is different from the previous message's date
@@ -471,17 +491,17 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
     final previousMessage = _messages[messageIndex - 1];
 
     final currentDate = DateTime(
-      currentMessage.createdAt.year,
+      currentMessage.createdAt. year,
       currentMessage.createdAt.month,
       currentMessage.createdAt.day,
     );
     final previousDate = DateTime(
-      previousMessage.createdAt.year,
+      previousMessage. createdAt.year,
       previousMessage.createdAt.month,
       previousMessage.createdAt.day,
     );
 
-    return !currentDate.isAtSameMomentAs(previousDate);
+    return ! currentDate.isAtSameMomentAs(previousDate);
   }
 
   Widget _buildDateSeparator(DateTime date) {
@@ -506,7 +526,7 @@ class _ChatDetailPageState extends State<ChatDetailPage> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: Colors.grey[300],
-            borderRadius: BorderRadius.circular(16),
+            borderRadius:  BorderRadius.circular(16),
           ),
           child: Text(
             dateText,

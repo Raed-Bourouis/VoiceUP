@@ -1,5 +1,5 @@
 /// Model representing a user profile from the profiles table.
-/// 
+///
 /// This model contains basic user information including:
 /// - User ID (matches auth.users.id)
 /// - Email address
@@ -59,6 +59,9 @@ class Profile {
   String get displayNameOrUsername => displayName ?? username ?? email;
 
   /// Returns the first character of the display name for avatar placeholder.
-  String get avatarInitial =>
-      (displayName ?? username ?? email).substring(0, 1).toUpperCase();
+  String get avatarInitial {
+    final name = displayName ?? username ?? email;
+    if (name.isEmpty) return '?';
+    return name.substring(0, 1).toUpperCase();
+  }
 }

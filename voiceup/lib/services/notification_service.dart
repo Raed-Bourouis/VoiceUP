@@ -1,4 +1,4 @@
-import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -6,94 +6,98 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Background message handler - must be top-level function
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  debugPrint('🔔 Background message:  ${message.messageId}');
-}
-
-/// Service class for handling push notifications. 
+/// Service class for handling push notifications using Firebase Cloud Messaging.
 /// 
-/// This service provides methods for:
-/// - Initializing Firebase Cloud Messaging
-/// - Handling foreground and background notifications
-/// - Managing FCM tokens
-/// - Storing tokens in Supabase for targeting
+/// This service provides:
+/// - Firebase initialization and FCM token management
+/// - Notification permission requests
+/// - Foreground notification display using flutter_local_notifications
+/// - Background notification handling
+/// - Notification tap handling for navigation
+/// - Current chat tracking to suppress notifications
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
 
-  final FirebaseMessaging _fcm = FirebaseMessaging.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
+  final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
-  final SupabaseClient _supabase = Supabase.instance.client;
 
-  /// Initialize the notification service.
-  /// Call this in main() after Firebase. initializeApp()
+  /// Stream controller for notification tap events
+  final StreamController<Map<String, dynamic>> _notificationTapController =
+      StreamController<Map<String, dynamic>>.broadcast();
+
+  /// Stream of notification tap events for navigation
+  Stream<Map<String, dynamic>> get onNotificationTap =>
+      _notificationTapController.stream;
+
+  /// Current chat ID to suppress notifications for active conversation
+  String? _currentChatId;
+
+  bool _isInitialized = false;
+
+  /// Initialize the notification service
   Future<void> initialize() async {
-    // Set up background handler
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    if (_isInitialized) return;
 
-    // Request permissions
-    await _requestPermissions();
+    try {
+      // Request notification permissions
+      await _requestPermissions();
 
-    // Initialize local notifications
-    await _initializeLocalNotifications();
+      // Initialize local notifications
+      await _initializeLocalNotifications();
 
-    // Set up foreground message handler
-    FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
+      // Listen for foreground messages
+      FirebaseMessaging.onMessage.listen(_handleForegroundMessage);
 
-    // Handle notification tap when app is in background/terminated
-    FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
+      // Handle notification taps when app is in background/terminated
+      FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationTap);
 
-    // Check if app was opened from a notification
-    final initialMessage = await _fcm.getInitialMessage();
-    if (initialMessage != null) {
-      _handleNotificationTap(initialMessage);
+      // Check if app was opened from a notification
+      final initialMessage = await _firebaseMessaging.getInitialMessage();
+      if (initialMessage != null) {
+        _handleNotificationTap(initialMessage);
+      }
+
+      // Listen for token refresh
+      _firebaseMessaging.onTokenRefresh.listen(_handleTokenRefresh);
+
+      _isInitialized = true;
+      debugPrint('NotificationService initialized successfully');
+    } catch (e) {
+      debugPrint('Error initializing NotificationService: $e');
     }
-
-    // Get and save FCM token
-    await saveFcmToken();
-
-    // Listen for token refresh
-    _fcm.onTokenRefresh.listen((token) {
-      _saveFcmTokenToDatabase(token);
-    });
   }
 
-  /// Request notification permissions from the user.
+  /// Request notification permissions from the user
   Future<void> _requestPermissions() async {
-    final settings = await _fcm.requestPermission(
-      alert: true,
-      announcement: false,
-      badge: true,
-      carPlay: false,
-      criticalAlert: false,
-      provisional: false,
-      sound: true,
-    );
-
-    debugPrint('🔔 Notification permission:  ${settings.authorizationStatus}');
-
-    // For iOS, set foreground presentation options
-    if (Platform.isIOS) {
-      await _fcm.setForegroundNotificationPresentationOptions(
+    try {
+      final settings = await _firebaseMessaging.requestPermission(
         alert: true,
+        announcement: false,
         badge: true,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
         sound: true,
       );
+
+      debugPrint('Notification permission status: ${settings.authorizationStatus}');
+    } catch (e) {
+      debugPrint('Error requesting notification permissions: $e');
     }
   }
 
-  /// Initialize local notifications for foreground display.
+  /// Initialize flutter_local_notifications for foreground notifications
   Future<void> _initializeLocalNotifications() async {
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
-      requestAlertPermission: true,
-      requestBadgePermission: true,
-      requestSoundPermission: true,
+      requestAlertPermission: false,
+      requestBadgePermission: false,
+      requestSoundPermission: false,
     );
 
     const initSettings = InitializationSettings(
@@ -103,165 +107,222 @@ class NotificationService {
 
     await _localNotifications.initialize(
       initSettings,
-      onDidReceiveNotificationResponse: (response) {
-        _handleLocalNotificationTap(response);
-      },
+      onDidReceiveNotificationResponse: _onLocalNotificationTap,
     );
 
     // Create notification channel for Android
-    const androidChannel = AndroidNotificationChannel(
-      'high_importance_channel',
+    if (Platform.isAndroid) {
+      const channel = AndroidNotificationChannel(
+        'chat_messages',
+        'Chat Messages',
+        description: 'Notifications for new chat messages',
+        importance: Importance.high,
+        playSound: true,
+        enableVibration: true,
+      );
+
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(channel);
+    }
+  }
+
+  /// Handle foreground messages and display local notification
+  Future<void> _handleForegroundMessage(RemoteMessage message) async {
+    debugPrint('Received foreground message: ${message.messageId}');
+
+    final chatId = message.data['chat_id'] as String?;
+
+    // Suppress notification if user is currently viewing this chat
+    if (chatId != null && chatId == _currentChatId) {
+      debugPrint('Suppressing notification for active chat: $chatId');
+      return;
+    }
+
+    // Display local notification
+    final notification = message.notification;
+    if (notification != null) {
+      await _showLocalNotification(
+        title: notification.title ?? 'New Message',
+        body: notification.body ?? '',
+        payload: message.data,
+      );
+    }
+  }
+
+  /// Show a local notification
+  Future<void> _showLocalNotification({
+    required String title,
+    required String body,
+    required Map<String, dynamic> payload,
+  }) async {
+    const androidDetails = AndroidNotificationDetails(
+      'chat_messages',
       'Chat Messages',
-      description: 'Notifications for new chat messages',
+      channelDescription: 'Notifications for new chat messages',
       importance: Importance.high,
+      priority: Priority.high,
       playSound: true,
       enableVibration: true,
     );
 
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(androidChannel);
-  }
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    );
 
-  /// Handle foreground messages by showing local notification.
-  Future<void> _handleForegroundMessage(RemoteMessage message) async {
-    debugPrint('🔔 Foreground message: ${message.messageId}');
-    debugPrint('🔔 Title: ${message.notification?.title}');
-    debugPrint('🔔 Body: ${message. notification?.body}');
-    debugPrint('🔔 Data: ${message.data}');
+    const details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
 
-    final notification = message.notification;
-    if (notification == null) return;
-
-    // Don't show notification if user is currently in the chat
-    final chatId = message.data['chat_id'];
-    if (chatId != null && _currentChatId == chatId) {
-      debugPrint('🔔 User is in this chat, not showing notification');
-      return;
-    }
-
-    // Show local notification
     await _localNotifications.show(
-      message.hashCode,
-      notification.title,
-      notification.body,
-      NotificationDetails(
-        android: AndroidNotificationDetails(
-          'high_importance_channel',
-          'Chat Messages',
-          channelDescription: 'Notifications for new chat messages',
-          importance:  Importance.high,
-          priority: Priority.high,
-          icon: '@mipmap/ic_launcher',
-        ),
-        iOS: const DarwinNotificationDetails(
-          presentAlert: true,
-          presentBadge: true,
-          presentSound: true,
-        ),
-      ),
-      payload: jsonEncode(message.data),
+      payload['message_id']?.hashCode ?? DateTime.now().millisecondsSinceEpoch,
+      title,
+      body,
+      details,
+      payload: _encodePayload(payload),
     );
   }
 
-  /// Handle notification tap when app is in background.
+  /// Handle notification tap when app is opened from background/terminated state
   void _handleNotificationTap(RemoteMessage message) {
-    debugPrint('🔔 Notification tapped: ${message.data}');
-    
-    final chatId = message.data['chat_id'];
-    if (chatId != null) {
-      // Navigate to chat - you'll need to implement this based on your navigation
-      _navigateToChat(chatId);
+    debugPrint('Notification tapped: ${message.messageId}');
+    final data = message.data;
+    if (data.isNotEmpty) {
+      _notificationTapController.add(data);
     }
   }
 
-  /// Handle local notification tap.
-  void _handleLocalNotificationTap(NotificationResponse response) {
-    debugPrint('🔔 Local notification tapped: ${response.payload}');
-    
+  /// Handle local notification tap
+  void _onLocalNotificationTap(NotificationResponse response) {
+    debugPrint('Local notification tapped: ${response.payload}');
     if (response.payload != null) {
-      final data = jsonDecode(response.payload!) as Map<String, dynamic>;
-      final chatId = data['chat_id'];
-      if (chatId != null) {
-        _navigateToChat(chatId);
+      final data = _decodePayload(response.payload!);
+      _notificationTapController.add(data);
+    }
+  }
+
+  /// Encode payload to string for local notifications
+  String _encodePayload(Map<String, dynamic> payload) {
+    return payload.entries
+        .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value.toString())}')
+        .join('&');
+  }
+
+  /// Decode payload string from local notifications
+  Map<String, dynamic> _decodePayload(String payload) {
+    final parts = payload.split('&');
+    final map = <String, dynamic>{};
+    for (final part in parts) {
+      final separatorIndex = part.indexOf('=');
+      if (separatorIndex >= 0 && separatorIndex < part.length - 1) {
+        final key = Uri.decodeComponent(part.substring(0, separatorIndex));
+        final value = Uri.decodeComponent(part.substring(separatorIndex + 1));
+        map[key] = value;
       }
     }
+    return map;
   }
 
-  /// Get and save FCM token to database.
-  Future<void> saveFcmToken() async {
-    final token = await _fcm.getToken();
-    if (token != null) {
-      debugPrint('🔔 FCM Token:  $token');
-      await _saveFcmTokenToDatabase(token);
+  /// Handle FCM token refresh
+  Future<void> _handleTokenRefresh(String token) async {
+    debugPrint('FCM token refreshed: $token');
+    await _saveTokenToDatabase(token);
+  }
+
+  /// Save FCM token to Supabase after successful login
+  Future<void> saveTokenAfterLogin() async {
+    try {
+      final token = await _firebaseMessaging.getToken();
+      if (token != null) {
+        await _saveTokenToDatabase(token);
+        debugPrint('FCM token saved after login: $token');
+      }
+    } catch (e) {
+      debugPrint('Error saving token after login: $e');
     }
   }
 
-  /// Save FCM token to Supabase for push notification targeting.
-  Future<void> _saveFcmTokenToDatabase(String token) async {
+  /// Save FCM token to database
+  Future<void> _saveTokenToDatabase(String token) async {
     try {
-      final userId = _supabase.auth.currentUser?. id;
+      final userId = _supabase.auth.currentUser?.id;
       if (userId == null) {
-        debugPrint('🔔 No user logged in, skipping token save');
+        debugPrint('Cannot save token: user not authenticated');
         return;
       }
 
-      await _supabase.from('user_push_tokens').upsert({
-        'user_id': userId,
-        'fcm_token': token,
-        'platform': Platform.isIOS ? 'ios' : 'android',
-        'updated_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'user_id, platform');
+      final platform = _getPlatformString();
 
-      debugPrint('🔔 FCM token saved to database');
+      // Upsert token (insert or update if exists)
+      await _supabase.from('user_push_tokens').upsert(
+        {
+          'user_id': userId,
+          'fcm_token': token,
+          'platform': platform,
+          'updated_at': DateTime.now().toIso8601String(),
+        },
+        onConflict: 'user_id,platform',
+      );
+
+      debugPrint('FCM token saved to database for user: $userId');
     } catch (e) {
-      debugPrint('🔔 Failed to save FCM token: $e');
+      debugPrint('Error saving token to database: $e');
     }
   }
 
-  /// Delete FCM token from database (call on logout).
-  Future<void> deleteToken() async {
+  /// Delete FCM token from database on logout
+  Future<void> deleteTokenOnLogout() async {
     try {
       final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) return;
+      if (userId == null) {
+        debugPrint('Cannot delete token: user not authenticated');
+        return;
+      }
 
+      final platform = _getPlatformString();
+
+      // Delete token for this device
       await _supabase
           .from('user_push_tokens')
           .delete()
           .eq('user_id', userId)
-          .eq('platform', Platform.isIOS ? 'ios' : 'android');
+          .eq('platform', platform);
 
-      await _fcm.deleteToken();
-      debugPrint('🔔 FCM token deleted');
+      debugPrint('FCM token deleted from database for user: $userId');
     } catch (e) {
-      debugPrint('🔔 Failed to delete FCM token: $e');
+      debugPrint('Error deleting token from database: $e');
     }
   }
 
-  // Track current chat to avoid showing notifications for active chat
-  String?  _currentChatId;
-
-  /// Set the current chat ID (call when entering a chat).
-  void setCurrentChat(String?  chatId) {
+  /// Set the current chat ID to suppress notifications
+  void setCurrentChat(String chatId) {
     _currentChatId = chatId;
+    debugPrint('Current chat set to: $chatId');
   }
 
-  /// Navigate to a specific chat.
-  /// Implement this based on your navigation setup.
-  void _navigateToChat(String chatId) {
-    // You'll need to implement this based on your navigation
-    // Option 1: Using a global navigator key
-    // Option 2: Using a stream/callback
-    // Option 3: Using a state management solution
-    debugPrint('🔔 Navigate to chat: $chatId');
-    
-    // Example using a callback (set this from your app):
-    if (onNavigateToChat != null) {
-      onNavigateToChat!(chatId);
+  /// Clear the current chat ID
+  void clearCurrentChat() {
+    _currentChatId = null;
+    debugPrint('Current chat cleared');
+  }
+
+  /// Dispose resources
+  void dispose() {
+    _notificationTapController.close();
+  }
+
+  /// Get current platform as string
+  String _getPlatformString() {
+    if (Platform.isAndroid) {
+      return 'android';
+    } else if (Platform.isIOS) {
+      return 'ios';
+    } else {
+      return 'web';
     }
   }
-
-  /// Callback for navigation - set this from your app.
-  Function(String chatId)? onNavigateToChat;
 }

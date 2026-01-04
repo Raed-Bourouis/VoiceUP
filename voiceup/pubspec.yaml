@@ -69,14 +69,11 @@ dependencies:
   # Permissions
   permission_handler: ^12.0.1
 
-  # Firebase Core
-  firebase_core: ^4.3.0
-  
-  # Firebase Cloud Messaging
-  firebase_messaging: ^16.1.0
-  
-  # Local notifications (for foreground)
-  flutter_local_notifications: ^19.5.0
+  # Push Notifications (Firebase)
+  firebase_core: ^2.24.2
+  firebase_messaging: ^14.7.10
+  flutter_local_notifications: ^17.2.4
+
 
 dev_dependencies:
   flutter_test:
