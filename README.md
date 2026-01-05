@@ -2,7 +2,7 @@
 
 This is project is for academic purposes.
 
-An android app is available in the [releases section](https://github.com/Raed-Bourouis/VoiceUP/releases/tag/v1.0.0-debug)
+An android app is available in the [releases section](https://github.com/Raed-Bourouis/VoiceUP/releases/tag/v1.0.0-release)
 
  **Alternatively,**
 to build the app, clone this repo, then run the following commands:
